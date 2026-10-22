@@ -1,6 +1,4 @@
-AN EFFICIENT SCHEDULABILITY ANALYSIS OF SEMI-CLAIRVOYANT SPORADIC TASK SYSTEMS WITH GRACEFUL DEGRADATION
-
-# How to Compile:
+ How to Compile:
 =================
 	
 1. Go to the path where the .c and .h files are stored.
