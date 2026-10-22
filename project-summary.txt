@@ -1,0 +1,103 @@
+1. SUMMARY
+---------------------------------------------------------------------
+Groundwork for project bullet 1 ("study EDF scheduling, demand-bound
+functions and schedulability analysis"): a C implementation of exact
+EDF schedulability tests based on demand bound functions (DBFs).
+
+Two tests are implemented and compared:
+  - Iterative test (Algorithm 1): checks every integer interval
+    length t = 1 ... floor(B).
+  - MC-QPA (Algorithm 2): uses the Quick Processor-demand Analysis
+    idea to skip most t values. Same verdict, far fewer points.
+
+The driver asserts on every task set that both tests return the same
+result, which experimentally confirms the correctness of MC-QPA.
+
+
+2. TASK MODEL (tasks.h)
+---------------------------------------------------------------------
+Each task has:
+  - period T (minimum inter-arrival time)
+  - relative deadline D (0.25*T ... 4.0*T, i.e. arbitrary deadlines)
+  - criticality: LO or HI (dual-criticality)
+  - wcet[LO], wcet[HI]
+  - utilization[LO], utilization[HI]  (= wcet / T)
+
+First necessary condition checked: max(U_LO, U_HI) < 1.0.
+
+
+3. HOW THE TEST WORKS
+---------------------------------------------------------------------
+Job count (auxiliary.c, get_num_jobs):
+  psi(t) = max(0, floor((t - D) / T) + 1)
+  = number of jobs that both arrive and have their deadline inside an
+    interval of length t.
+
+Demand of a task depends on t and on a mode-switch instant s:
+  HI task: psi(t)*C(LO) + psi(t - s)*(C(HI) - C(LO))
+  LO task: psi(t)*C(HI) + min(floor(s/T) + 1, psi(t))*(C(LO) - C(HI))
+
+Schedulability condition:
+  sum_i DBF_i(t, s) <= t
+  for all t in [1, floor(B)] and all s in S(t),
+  where B = (sum of WCETs at own criticality) / (1 - max(U_LO, U_HI))
+  and S(t) = {t - k*T_i - D_i for HI tasks} U {t}
+  (built, sorted and deduplicated in get_s_points).
+
+Iterative test (iterative.c):
+  Loop t = 1 ... floor(B); for each t evaluate all s in S(t).
+  Fail as soon as demand > t.
+
+MC-QPA (mcqpa.c):
+  Start at t = floor(B). Compute h(t) = max over s of the demand.
+    h(t) > t  -> NOT schedulable
+    h(t) < t  -> jump to t = floor(h(t))
+    h(t) = t  -> t = t - 1
+  Stop when t reaches 0 (schedulable if no failure was found).
+
+Both tests count visited t-points and (t, s)-points, so the savings
+of MC-QPA can be measured directly (and runtime via clock()).
+
+
+4. EXPERIMENT SETUP (driver.c, generator.c)
+---------------------------------------------------------------------
+Two input modes:
+  - 'f': task sets read from input.txt
+  - 't': generated task sets
+
+Generated sweep:
+  - criticality proportion: 0.25, 0.50, 0.75
+  - taskset utilization: 0.1 ... 0.9 (step 0.1)
+  - 200 task sets per point, 20 tasks each (tasks.h)
+  - UUniFast utilizations, log-uniform periods and deadlines
+
+Reported (terminal and output.csv):
+  weighted schedulability, runtime of both tests, average B,
+  number of t-points and (t, s)-points for both tests, number of
+  failed task sets and whether failures occur before 0.5B / 0.25B.
+
+
+
+
+7. NEXT STEPS
+---------------------------------------------------------------------
+ 1. Fix the generator and rerun the experiments.
+ 2. Define the version model: V_i = {(C_i^v, E_i^v)}.
+ 3. Decide with the supervisor whether the dual-criticality
+    machinery is needed or only classical single-mode DBF
+    (demand = psi_i(t) * C_i).
+ 4. Formalize the constrained objective (energy, deadline margin,
+    WCET) and the non-emptiness argument.
+ 5. Build a C++ prototype that reuses the QPA loop as the
+    feasibility check; evaluate on synthetic and benchmark sets.
+
+
+8. FILES COVERED
+---------------------------------------------------------------------
+  tasks.h        task structure, NUM_TASKS, NUM_TASKSETS
+  generator.h/c  parameter generator, file input
+  auxiliary.h/c  job count, S(t) construction, utilities
+  schedtest.h    Schedulability struct, return codes
+  iterative.c    Algorithm 1 (iterative exact test)
+  mcqpa.c        Algorithm 2 (MC-QPA)
+  driver.c       experiment driver, CSV output
